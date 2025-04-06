@@ -1,0 +1,71 @@
+import os
+import requests
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Updater, CommandHandler, CallbackContext, CallbackQueryHandler
+from dotenv import load_dotenv
+
+load_dotenv()
+TOKEN = os.getenv("TELEGRAM_TOKEN")
+
+# Поиск аниме через Jikan API
+def search_anime(query):
+    url = f"https://api.jikan.moe/v4/anime?q={query}"
+    response = requests.get(url).json()
+    return response["data"][0] if response["data"] else None
+
+# Команда /start
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text("Привет! Напиши /search <название>, чтобы найти аниме.")
+
+# Команда /search
+def search(update: Update, context: CallbackContext):
+    query = " ".join(context.args)
+    if not query:
+        update.message.reply_text("Пример: /search Наруто")
+        return
+
+    anime = search_anime(query)
+    if not anime:
+        update.message.reply_text("Аниме не найдено 😢")
+        return
+
+    # Формируем сообщение
+    title = anime["title"]
+    episodes = anime["episodes"]
+    score = anime["score"]
+    url = anime["url"]
+    synopsis = anime["synopsis"][:500] + "..."  # Обрезаем описание
+
+    message = (
+        f"🎬 **{title}**\n"
+        f"📺 Эпизоды: {episodes}\n"
+        f"⭐ Рейтинг: {score}\n"
+        f"📖 Описание: {synopsis}\n"
+        f"[Ссылка на MyAnimeList]({url})"
+    )
+
+    # Кнопка "Добавить в избранное"
+    keyboard = [[InlineKeyboardButton("❤️ Добавить в избранное", callback_data=f"fav_{anime['mal_id']}")]]
+    update.message.reply_markdown(message, reply_markup=InlineKeyboardMarkup(keyboard))
+
+# Обработчик кнопок
+def button_handler(update: Update, context: CallbackContext):
+    query = update.callback_query
+    query.answer()
+    anime_id = query.data.split("_")[1]
+    # Здесь можно сохранить anime_id в базу данных для пользователя
+    query.edit_message_text(text="Добавлено в избранное! ✅")
+
+def main():
+    updater = Updater(TOKEN)
+    dispatcher = updater.dispatcher
+
+    dispatcher.add_handler(CommandHandler("start", start))
+    dispatcher.add_handler(CommandHandler("search", search))
+    dispatcher.add_handler(CallbackQueryHandler(button_handler))
+
+    updater.start_polling()
+    updater.idle()
+
+if __name__ == "__main__":
+    main()
